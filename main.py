@@ -13,7 +13,7 @@ class ScriptArguments:
     dataset_config: str = field(default="all", metadata={"help": "The configuration of the dataset."})
     split: str = field(default="test", metadata={"help": "The dataset split to use."})
     num_samples: int = field(default=0, metadata={"help": "The number of samples to evaluate. 0 to use all."})
-    device: str = field(default="cuda" if torch.cuda.is_available() else "cpu", metadata={"help": "The device to run the model on ('cuda' or 'cpu')."})
+    device: str = field(default="cuda", metadata={"help": "The device to run the model on ('cuda' or 'cpu')."})
     system_prompt: str = field(default='You are a helpful assistant. Start your answer with a single letter without any additional formatting.', metadata={"help": "The system prompt to use."})
 
 @dataclass
