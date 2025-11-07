@@ -312,9 +312,8 @@ def main():
 
 
             labels = [chr(ord('A') + i) for i in range(len(options_list))]
-            question += '\n'
             for i, option in enumerate(options_list):
-                question += labels[i] + ' ' + option + '\n'
+                question += '\n' + labels[i] + '. ' + option
             correct_option_index = item['answer_index']
             answer_key = labels[correct_option_index]
 
