@@ -14,6 +14,7 @@ class ScriptArguments:
     split: str = field(default="test", metadata={"help": "The dataset split to use."})
     num_samples: int = field(default=0, metadata={"help": "The number of samples to evaluate. 0 to use all."})
     device: str = field(default="cuda" if torch.cuda.is_available() else "cpu", metadata={"help": "The device to run the model on ('cuda' or 'cpu')."})
+    system_prompt: str = field(default='You are a helpful assistant. Start your answer with a single letter without any additional formatting.', metadata={"help": "The system prompt to use."})
 
 @dataclass
 class LoopingArguments:
@@ -27,7 +28,6 @@ class HiddenStateArguments:
     enable_hidden_state_injection: bool = field(default=True, metadata={"help": "Enable the hidden state injection experiment."})
     num_iterations: int = field(default=2, metadata={"help": "Number of iterations for hidden state injection."})
     baseline_no_injection: bool = field(default=False, metadata={"help": "Run hidden state injection baseline without hidden state injection."})
-    system_prompt: str = field(default='You are a helpful assistant. Start your answer with a single letter without any additional formatting.', metadata={"help": "The system prompt to use."})
     guess_prompt_template: str = field(default='{guess} would be my first guess. After some thinking, the answer is: \\boxed{{', metadata={"help": "The template for the guess prompt."})
 
 
@@ -265,6 +265,9 @@ def generate_with_hidden_state_injection(model, tokenizer, inputs, text, num_ite
 
 def main():
     parser = HfArgumentParser((ScriptArguments, LoopingArguments, HiddenStateArguments))
+    args: ScriptArguments
+    loop_args: LoopingArguments
+    hs_args: HiddenStateArguments
     args, loop_args, hs_args = parser.parse_args_into_dataclasses()
 
     wandb.init(
@@ -341,7 +344,7 @@ def main():
 
         messages= [
             {
-                'content': 'You are a helpful assistant. Answer with a SINGLE letter without any additional formatting.',
+                'content': args.system_prompt,
                 'role': 'system',
             },
             {
