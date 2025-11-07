@@ -14,7 +14,7 @@ class ScriptArguments:
     split: str = field(default="test", metadata={"help": "The dataset split to use."})
     num_samples: int = field(default=0, metadata={"help": "The number of samples to evaluate. 0 to use all."})
     device: str = field(default="cuda", metadata={"help": "The device to run the model on ('cuda' or 'cpu')."})
-    system_prompt: str = field(default='You are a helpful assistant. Start your answer with a single letter without any additional formatting.', metadata={"help": "The system prompt to use."})
+    system_prompt: str = field(default='You are a helpful assistant. Start your answer with a single letter or number without any additional formatting.', metadata={"help": "The system prompt to use."})
 
 @dataclass
 class LoopingArguments:
