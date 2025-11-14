@@ -1,4 +1,4 @@
-datazets==0.2.0
+datasets==0.2.0
 numpy==1.26.4
 torch==2.5.1
 tqdm==4.67.0
