@@ -273,7 +273,7 @@ def main():
     name = f"{args.model_name} {args.dataset_name} "
     if loop_args.enable_loop:
         assert not hs_args.enable_hidden_state_injection
-        name += f"loop {loop_args.t_layer}-{loop_args.k_layer} x{loop_args.num_loops}"
+        name += f"loop {loop_args.t_layer}-{loop_args.k_layers} x{loop_args.num_loops}"
     elif hs_args.enable_hidden_state_injection:
         if hs_args.baseline_no_injection:
             name += f"tokenrep x{hs_args.num_iterations}"
