@@ -191,10 +191,12 @@ def generate_with_hidden_state_injection(model, tokenizer, inputs, text, num_ite
     with torch.no_grad():
         outputs = model(**inputs, output_hidden_states=True)
     final_token_hidden_states = [h[:, -1:, :].clone() for h in outputs.hidden_states]
+    predicted_token = outputs.logits.argmax(-1)[0, -1]
 
     for _ in range(num_iterations):
         new_inputs, special_token_index = _prepare_inputs_for_iteration(special_token_str)
         input_ids = new_inputs['input_ids']
+        input_ids[:, special_token_index] = predicted_token
 
         # 3. Forward pass with hidden state injection
         use_cache = False
@@ -202,7 +204,7 @@ def generate_with_hidden_state_injection(model, tokenizer, inputs, text, num_ite
 
         inputs_embeds = model.model.embed_tokens(input_ids)
 
-        inputs_embeds[:, special_token_index:special_token_index + 1, :] = final_token_hidden_states[0]
+        inputs_embeds[:, special_token_index-1:special_token_index, :] = final_token_hidden_states[0]
 
         past_seen_tokens = 0
         cache_position = torch.arange(
@@ -278,7 +280,7 @@ def main():
         if hs_args.baseline_no_injection:
             name += f"tokenrep x{hs_args.num_iterations}"
         else:
-            name += f"hsinj x{hs_args.num_iterations}"
+            name += f"hsinj(f) x{hs_args.num_iterations}"
 
     wandb.init(
         project="recursive-LLM",
@@ -287,7 +289,8 @@ def main():
             "script_args": asdict(args),
             "loop_args": asdict(loop_args),
             "hs_args": asdict(hs_args),
-        }
+        },
+        #mode='disabled'
     )
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
