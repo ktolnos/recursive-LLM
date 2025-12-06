@@ -29,7 +29,7 @@ class HiddenStateArguments:
     num_iterations: int = field(default=2, metadata={"help": "Number of iterations for hidden state injection."})
     baseline_no_injection: bool = field(default=False, metadata={"help": "Run hidden state injection baseline without hidden state injection."})
     guess_prompt_template: str = field(default='{guess} would be my first guess. After some thinking, the answer is: \\boxed{{', metadata={"help": "The template for the guess prompt."})
-
+    num_old_answers: int = field(default=1, metadata={"help": "How many of the old answers to include"})
 
 
 def generate_with_loop(model, inputs, t, k, num_loops):
@@ -149,12 +149,12 @@ def generate_with_loop(model, inputs, t, k, num_loops):
 
 
 def generate_with_hidden_state_injection(model, tokenizer, inputs, text, num_iterations, device,
-                                         baseline_no_injection=False, guess_prompt_template=None):
+                                         baseline_no_injection=False, guess_prompt_template=None, old_included=1):
     special_token_str = "<|placeholder|>"
     special_token_id = tokenizer.convert_tokens_to_ids(special_token_str)
 
     def _prepare_inputs_for_iteration(guess_str_for_template):
-        new_text = text + guess_prompt_template.format(guess=guess_str_for_template)
+        new_text = text + guess_prompt_template.format(guess=guess_str_for_template) * old_included
 
         new_inputs = tokenizer(new_text, return_tensors="pt")
         if device == "cuda":
@@ -165,19 +165,19 @@ def generate_with_hidden_state_injection(model, tokenizer, inputs, text, num_ite
         special_token_indices = (input_ids[0] == special_token_id).nonzero(as_tuple=True)[0]
         if len(special_token_indices) == 0:
             raise ValueError(f"Special token '{special_token_str}' not found in the new prompt.")
-        special_token_index = special_token_indices[0].item()
-        return new_inputs, special_token_index
+        special_token_indexs = special_token_indices
+        return new_inputs, special_token_indexs
 
-    if baseline_no_injection:
+    if baseline_no_injection:  # this only supports old_included=1 for now
         with torch.no_grad():
             initial_outputs = model.generate(**inputs, max_new_tokens=1, do_sample=False)
         predicted_token = initial_outputs[0, -1:]
 
         for _ in range(num_iterations):
-            new_inputs, special_token_index = _prepare_inputs_for_iteration(special_token_str)
+            new_inputs, special_token_indexs = _prepare_inputs_for_iteration(special_token_str)
             input_ids = new_inputs['input_ids']
             # print(f'Predicted token:{tokenizer.convert_ids_to_tokens(predicted_token)} {predicted_token}')
-            input_ids[0, special_token_index] = predicted_token
+            input_ids[0, special_token_indexs[0]] = predicted_token
 
             with torch.no_grad():
                 outputs = model(input_ids=input_ids)
@@ -191,10 +191,12 @@ def generate_with_hidden_state_injection(model, tokenizer, inputs, text, num_ite
     with torch.no_grad():
         outputs = model(**inputs, output_hidden_states=True)
     final_token_hidden_states = [h[:, -1:, :].clone() for h in outputs.hidden_states]
+    predicted_token = outputs.logits.argmax(-1)[0, -1]
 
     for _ in range(num_iterations):
-        new_inputs, special_token_index = _prepare_inputs_for_iteration(special_token_str)
+        new_inputs, special_token_indexs = _prepare_inputs_for_iteration(special_token_str)
         input_ids = new_inputs['input_ids']
+        input_ids[:, special_token_indexs[0]] = predicted_token
 
         # 3. Forward pass with hidden state injection
         use_cache = False
@@ -202,7 +204,7 @@ def generate_with_hidden_state_injection(model, tokenizer, inputs, text, num_ite
 
         inputs_embeds = model.model.embed_tokens(input_ids)
 
-        inputs_embeds[:, special_token_index:special_token_index + 1, :] = final_token_hidden_states[0]
+        inputs_embeds[:, special_token_indexs[0]-1:special_token_indexs[0], :] = final_token_hidden_states[0]
 
         past_seen_tokens = 0
         cache_position = torch.arange(
@@ -246,7 +248,7 @@ def generate_with_hidden_state_injection(model, tokenizer, inputs, text, num_ite
             hidden_states = layer_outputs
 
             if i + 1 < len(final_token_hidden_states):
-                hidden_states[:, special_token_index:special_token_index + 1, :] = final_token_hidden_states[i + 1]
+                hidden_states[:, special_token_indexs[0]-1:special_token_indexs[0], :] = final_token_hidden_states[i + 1]
 
             layer_hidden_states.append(hidden_states.clone())
 
@@ -257,8 +259,8 @@ def generate_with_hidden_state_injection(model, tokenizer, inputs, text, num_ite
 
     last_token_logits = logits[:, -1, :]
     predicted_token_id = torch.argmax(last_token_logits, dim=-1)
-    special_token = torch.argmax(logits[:, special_token_index, :], dim=-1)
-    input_ids[:, special_token_index] = special_token
+    special_token = torch.argmax(logits[:, special_token_indexs, :], dim=-1)
+    input_ids[:, special_token_indexs[0]] = special_token
 
     return torch.cat([input_ids, predicted_token_id.unsqueeze(-1)], dim=-1)
 
@@ -278,7 +280,7 @@ def main():
         if hs_args.baseline_no_injection:
             name += f"tokenrep x{hs_args.num_iterations}"
         else:
-            name += f"hsinj x{hs_args.num_iterations}"
+            name += f"hsinj(f) x{hs_args.num_iterations}"
 
     wandb.init(
         project="recursive-LLM",
@@ -287,7 +289,8 @@ def main():
             "script_args": asdict(args),
             "loop_args": asdict(loop_args),
             "hs_args": asdict(hs_args),
-        }
+        },
+        mode='disabled'
     )
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
@@ -380,7 +383,7 @@ def main():
         elif hs_args.enable_hidden_state_injection:
             outputs = generate_with_hidden_state_injection(model, tokenizer, inputs, text, hs_args.num_iterations,
                                                          args.device, hs_args.baseline_no_injection,
-                                                           hs_args.guess_prompt_template)
+                                                           hs_args.guess_prompt_template, hs_args.num_old_answers)
         else:
             outputs = model.generate(**inputs, max_new_tokens=1, do_sample=False)
 
